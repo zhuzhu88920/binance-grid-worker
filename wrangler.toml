@@ -11,7 +11,7 @@ crons = ["*/5 * * * *"]
 # 将返回的 id 填入下方
 [[kv_namespaces]]
 binding = "GRID_KV"
-id = "YOUR_KV_NAMESPACE_ID_HERE"
+id = "3ec5780ee6234d97863cba22a28beed3"
 
 # 环境变量（非敏感，可直接写在配置里）
 [vars]

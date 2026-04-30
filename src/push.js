@@ -9,9 +9,17 @@ import { PUSH_TEMPLATE, formatStrategyLine, getIndicator } from './push-config.j
  * 获取当前时间字段
  */
 function getTimeFields() {
-  const now = new Date();
-  const h = String(now.getHours()).padStart(2, '0');
-  const m = String(now.getMinutes()).padStart(2, '0');
+  // Cloudflare Workers 使用 UTC 时间，需转换为北京时间 (UTC+8)
+  var now = new Date();
+  // 直接构造北京时间字符串
+  var bjStr = now.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
+  // bjStr 格式如 "2026/5/1 04:17:30"，提取 HH:MM
+  var match = bjStr.match(/(\d{2}):(\d{2})/);
+  var h = '00', m = '00';
+  if (match) {
+    h = match[1];
+    m = match[2];
+  }
   return {
     hour: h,
     minute: m,

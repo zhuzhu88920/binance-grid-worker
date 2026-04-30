@@ -1,0 +1,33 @@
+# Binance 网格推送消息模板
+# 修改此文件后运行: node build-template.cjs 来同步到 src/push-config.js
+
+# 推送标题格式
+# 可用变量: {username} {mark_price_fmt} {total_pnl_fmt} {time}
+title: "🤖{username}  💰{mark_price_fmt} | 📈{total_pnl_fmt} | {time}"
+
+# 每个策略的行格式（无头部行，信息已在标题中）
+# 可用变量:
+#   {indicator}        收益率颜色: 🟢>5% 🟡0~5% 🟠-5~0% 🔴<-5%
+#   {strategy_amount}  策略本金(不含杠杆), 如 1000
+#   {leverage}         杠杆倍数, 如 20
+#   {matched_count}    已配对订单数, 如 80
+#   {unmatched_count}  未配对订单数, 如 4
+#   {total_pnl}        总收益(含符号，2位小数), 如 +25.48
+#   {total_pnl_rate}   总收益率%(含符号，2位小数), 如 +2.54
+#   {matched_pnl}      已配对利润(含符号，2位小数), 如 +28.72
+#   {matched_pnl_rate} 已配对收益率%(含符号，2位小数), 如 +2.87
+#   {unmatched_profit}  未配对盈亏(含符号，2位小数), 如 -3.23
+#   {unmatched_profit_rate} 未配对盈亏率%(含符号，2位小数), 如 -0.32
+#   {days}             运行天数(1位小数), 如 0.7 或 7.6
+strategy_line: "{indicator}{strategy_amount}U {leverage}x | 🔁{matched_count} ↪️{unmatched_count} | {total_pnl}({total_pnl_rate}%)|{matched_pnl}({matched_pnl_rate}%)|{unmatched_profit}({unmatched_profit_rate}%) | {days}"
+
+# 推送正文底部(所有策略之后)
+# 可用变量: {total_pnl_all} 所有策略总收益(含符号)
+# footer: "📈 总收益: {total_pnl_all} USDC"
+
+# 无数据时的正文
+empty_body: "⚠️ 未获取到任何策略数据"
+
+# Cookie 失效
+expired_title: "⚠️ Binance Cookie 已失效"
+expired_body: "请更新 Cookie 和 CSRF Token"

@@ -1,0 +1,21 @@
+{
+  "name": "binance-grid-worker",
+  "version": "1.0.0",
+  "description": "Binance 网格策略监控 - Cloudflare Workers 版",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "build:template": "node build-template.cjs",
+    "kv:setup": "wrangler kv:namespace create GRID_KV",
+    "login": "node local/login.js"
+  },
+  "dependencies": {
+    "playwright": "^1.44.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240620.0",
+    "wrangler": "^3.60.0"
+  }
+}

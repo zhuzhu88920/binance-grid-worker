@@ -128,9 +128,12 @@ export async function pushBark(userId, type, data, barkKey) {
   }
 
   try {
-    var params = new URLSearchParams({ title: title, body: body });
-    var url = 'https://api.day.app/' + barkKey + '?' + params.toString();
-    var resp = await fetch(url, { method: 'GET' });
+    var barkUrl = 'https://api.day.app/' + barkKey;
+    var resp = await fetch(barkUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: title, body: body }),
+    });
 
     if (resp.ok) {
       console.log('✅ 推送成功: ' + userId + ' - ' + title);

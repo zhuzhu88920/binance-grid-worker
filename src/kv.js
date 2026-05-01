@@ -33,3 +33,15 @@ export async function getLastMatchedCounts(env, userId) {
 export async function setLastMatchedCounts(env, userId, countsObj) {
   await kvPut(env, `user:${userId}:last_matched_counts`, JSON.stringify(countsObj));
 }
+
+// ================== Cron 执行状态 ==================
+
+export async function getCronStatus(env) {
+  const raw = await kvGet(env, 'cron:status');
+  try { return JSON.parse(raw || '{}'); } catch { return {}; }
+}
+
+export async function setCronStatus(env, status) {
+  // status = { lastRun: ISO string, userResults: [...] }
+  await kvPut(env, 'cron:status', JSON.stringify(status));
+}

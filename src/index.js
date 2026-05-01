@@ -10,7 +10,7 @@
  */
 
 import { pushBark } from './push.js';
-import { getLastMatchedCounts, setLastMatchedCounts } from './kv.js';
+import { getLastMatchedCounts, setLastMatchedCounts, getCronStatus, setCronStatus } from './kv.js';
 
 // ================== 从 env 读取用户列表 ==================
 
@@ -143,12 +143,27 @@ export default {
     // 本地调试：从 .dev.vars 读凭证，抓取并推送
     if (pathname === '/api/test' && request.method === 'GET') return handleTest(env);
 
-    return json({ status: 'running', endpoints: ['/health', '/api/users', '/api/trigger', '/api/test'] });
+    // 调试：查看 KV 状态、当前抓取结果、推送判断原因
+    if (pathname === '/api/debug' && request.method === 'GET') return handleDebug(env);
+
+    // 查看 cron 最后一次执行状态
+    if (pathname === '/api/cron-status' && request.method === 'GET') {
+      const status = await getCronStatus(env);
+      return json(status);
+    }
+
+    return json({ status: 'running', endpoints: ['/health', '/api/users', '/api/trigger', '/api/test', '/api/debug', '/api/cron-status'] });
   },
 
   // Cron 触发器：每 5 分钟
   async scheduled(event, env, ctx) {
-    await processAllUsers(env);
+    const startTime = new Date().toISOString();
+    try {
+      await processAllUsers(env);
+      await setCronStatus(env, { lastRun: startTime, status: 'success' });
+    } catch (e) {
+      await setCronStatus(env, { lastRun: startTime, status: 'error', error: e.message });
+    }
   },
 };
 
@@ -227,36 +242,39 @@ async function processGrid(headers, grid) {
 
 // ================== 用户处理主逻辑 ==================
 
+/**
+ * 每5分钟cron调用一次
+ * 逻辑：抓取每个策略的matchedCount → 与上次对比 → 有变化就推送 → 更新基准值
+ */
 async function processUser(user, env) {
   const headers = makeHeaders(user.cookie, user.csrfToken);
-
   const grids = await fetchOpenGrids(headers);
+
   if (!grids || grids.length === 0) {
-    console.log(`用户 ${user.id}: 没有运行中的网格策略`);
+    console.log(`[${user.id}] 无运行中的策略`);
     return;
   }
 
-  const currentCounts = {};
-  for (const g of grids) currentCounts[g.strategyId] = g.matchedCount || 0;
+  // 当前 matchedCount：{ strategyId: matchedCount }
+  const current = {};
+  for (const g of grids) current[g.strategyId] = g.matchedCount || 0;
 
-  const prevCounts = await getLastMatchedCounts(env, user.id);
+  // 上次 matchedCount（从KV读取）
+  const prev = await getLastMatchedCounts(env, user.id);
 
-  let hasChange = false;
-  for (const sid of Object.keys(currentCounts)) {
-    if (String(currentCounts[sid]) !== String(prevCounts[sid] || '')) {
-      hasChange = true;
-      break;
-    }
-  }
+  // 对比：任何一个策略的 matchedCount 变了就推送
+  const changed = Object.keys(current).some(sid => current[sid] !== (prev[sid] || 0));
 
-  console.log(`用户 ${user.id}: prev=${JSON.stringify(prevCounts)} current=${JSON.stringify(currentCounts)} hasChange=${hasChange}`);
+  console.log(`[${user.id}] 上次=${JSON.stringify(prev)} 当前=${JSON.stringify(current)} 有变化=${changed}`);
 
-  if (hasChange) {
+  if (changed) {
     const metricsList = await Promise.all(grids.map(g => processGrid(headers, g)));
     await pushBark(user.id, 'normal', { strategies: metricsList, user_id: user.id }, user.barkKey);
+    console.log(`[${user.id}] 已推送 ${grids.length} 个策略`);
   }
 
-  await setLastMatchedCounts(env, user.id, currentCounts);
+  // 无论是否推送，都更新基准值
+  await setLastMatchedCounts(env, user.id, current);
 }
 
 // ================== API 处理器 ==================
@@ -301,6 +319,50 @@ async function handleTest(env) {
         ? await pushBark(user.id, 'manual', { strategies: metricsList, user_id: user.id }, user.barkKey)
         : false;
       results.push({ userId: user.id, gridCount: metricsList.length, pushed: ok });
+    }
+    return json({ success: true, results });
+  } catch (e) {
+    return json({ success: false, error: e.message });
+  }
+}
+
+// ================== 调试接口 ==================
+
+async function handleDebug(env) {
+  try {
+    const users = getUsersFromEnv(env);
+    if (users.length === 0) return json({ success: false, error: '未找到用户配置' });
+
+    const results = [];
+    for (const user of users) {
+      const headers = makeHeaders(user.cookie, user.csrfToken);
+      let grids = [];
+      try { grids = await fetchOpenGrids(headers); } catch (e) { grids = [{ error: e.message }]; }
+
+      const currentCounts = {};
+      for (const g of grids) {
+        if (g.error) continue;
+        currentCounts[g.strategyId] = g.matchedCount || 0;
+      }
+
+      const prevCounts = await getLastMatchedCounts(env, user.id);
+
+      let hasChange = false;
+      for (const sid of Object.keys(currentCounts)) {
+        if (String(currentCounts[sid]) !== String(prevCounts[sid] || '')) {
+          hasChange = true;
+          break;
+        }
+      }
+
+      results.push({
+        userId: user.id,
+        prevCounts,
+        currentCounts,
+        hasChange,
+        willPush: hasChange,
+        reason: hasChange ? 'matchedCount 有变化，会推送' : 'matchedCount 无变化，不推送',
+      });
     }
     return json({ success: true, results });
   } catch (e) {

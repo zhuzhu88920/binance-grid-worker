@@ -127,7 +127,16 @@ export default {
 // ================== Cron 主逻辑 ==================
 
 async function processAllUsers(env) {
-  const userIds = await getAllUserIds(env);
+  let userIds = await getAllUserIds(env);
+
+  // 兜底：KV 里没有用户列表时，从环境变量 BINANCE_USER_ID 读取
+  if ((!userIds || userIds.length === 0) && env.BINANCE_USER_ID) {
+    userIds = [env.BINANCE_USER_ID];
+    console.log(`KV 用户列表为空，使用环境变量 BINANCE_USER_ID: ${env.BINANCE_USER_ID}`);
+  }
+
+  console.log(`cron: 处理 ${userIds.length} 个用户: ${userIds.join(', ')}`);
+
   for (const userId of userIds) {
     try {
       await processUser(userId, env);

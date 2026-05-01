@@ -156,11 +156,15 @@ export default {
   },
 
   // Cron 触发器：每 5 分钟
+  // 注意：CF cron 某些节点会被 Binance 451 封锁
+  // 实际定时任务由 GitHub Actions 每5分钟 POST /api/trigger 完成
   async scheduled(event, env, ctx) {
     const startTime = new Date().toISOString();
     try {
-      await processAllUsers(env);
-      await setCronStatus(env, { lastRun: startTime, status: 'success' });
+      const selfUrl = 'https://binance-grid-worker.andox.workers.dev/api/trigger';
+      const res = await fetch(selfUrl, { method: 'POST' });
+      const result = await res.json();
+      await setCronStatus(env, { lastRun: startTime, status: 'success', triggerResult: result });
     } catch (e) {
       await setCronStatus(env, { lastRun: startTime, status: 'error', error: e.message });
     }
@@ -174,18 +178,22 @@ async function processAllUsers(env) {
 
   if (users.length === 0) {
     console.log('未找到任何用户配置，请检查环境变量');
-    return;
+    return [];
   }
 
   console.log(`cron: 处理 ${users.length} 个用户: ${users.map(u => u.id).join(', ')}`);
 
+  const details = [];
   for (const user of users) {
     try {
-      await processUser(user, env);
+      const result = await processUser(user, env);
+      details.push(result);
     } catch (e) {
+      details.push({ userId: user.id, error: e.message });
       console.error(`处理用户 ${user.id} 失败:`, e.message);
     }
   }
+  return details;
 }
 
 // ================== 网格数据处理 ==================
@@ -252,7 +260,7 @@ async function processUser(user, env) {
 
   if (!grids || grids.length === 0) {
     console.log(`[${user.id}] 无运行中的策略`);
-    return;
+    return { userId: user.id, pushed: false, reason: '无运行中的策略' };
   }
 
   // 当前 matchedCount：{ strategyId: matchedCount }
@@ -275,6 +283,8 @@ async function processUser(user, env) {
 
   // 无论是否推送，都更新基准值
   await setLastMatchedCounts(env, user.id, current);
+
+  return { userId: user.id, prev, current, changed, pushed: changed };
 }
 
 // ================== API 处理器 ==================

@@ -9,7 +9,8 @@
     "deploy": "wrangler deploy",
     "build:template": "node build-template.cjs",
     "sync-secrets": "node sync-secrets.cjs",
-    "sync-secrets:dry": "node sync-secrets.cjs --dry"
+    "sync-secrets:dry": "node sync-secrets.cjs --dry",
+    "update": "node sync-secrets.cjs"
   },
   "dependencies": {
     "playwright": "^1.44.0"

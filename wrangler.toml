@@ -6,17 +6,17 @@ compatibility_date = "2024-01-01"
 [triggers]
 crons = ["*/5 * * * *"]
 
-# KV 命名空间绑定
-# 先运行: npx wrangler kv:namespace create GRID_KV
-# 将返回的 id 填入下方
+# KV 命名空间（只用于持久化 last_matched_counts）
 [[kv_namespaces]]
 binding = "GRID_KV"
 id = "3ec5780ee6234d97863cba22a28beed3"
 
-# 环境变量（非敏感，可直接写在配置里）
-[vars]
-ENVIRONMENT = "production"
-
-# secrets（使用 wrangler secret put 命令设置，不要写在这里）
-# wrangler secret put UPDATE_SECRET
-# wrangler secret put BARK_KEY_DEFAULT
+# ============================================================
+# 凭证配置方式：
+#   本地开发  → 写入 .dev.vars（不提交 git）
+#   CF 生产   → wrangler secret put USER1_COOKIE
+#               wrangler secret put USER1_CSRF_TOKEN
+#               wrangler secret put USER1_BARK_KEY
+#               wrangler secret put USER1_ID
+#   多用户追加 USER2_COOKIE / USER2_CSRF_TOKEN ...
+# ============================================================

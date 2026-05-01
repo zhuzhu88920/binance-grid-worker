@@ -8,8 +8,8 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "build:template": "node build-template.cjs",
-    "kv:setup": "wrangler kv:namespace create GRID_KV",
-    "login": "node local/login.js"
+    "sync-secrets": "node sync-secrets.cjs",
+    "sync-secrets:dry": "node sync-secrets.cjs --dry"
   },
   "dependencies": {
     "playwright": "^1.44.0"

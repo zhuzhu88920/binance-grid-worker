@@ -137,6 +137,8 @@ export default {
 
     // 手动触发全部用户推送
     if (pathname === '/api/trigger' && request.method === 'POST') {
+      const colo = request.cf?.colo || 'unknown';
+      console.log(`[trigger] 边缘节点: ${colo}`);
       return handleTriggerAll(env);
     }
 
@@ -156,15 +158,20 @@ export default {
   },
 
   // Cron 触发器：每 5 分钟
-  // 注意：CF cron 某些节点会被 Binance 451 封锁
-  // 实际定时任务由 GitHub Actions 每5分钟 POST /api/trigger 完成
   async scheduled(event, env, ctx) {
     const startTime = new Date().toISOString();
     try {
+      // 诊断：记录 cron 运行在哪个边缘节点
+      const traceRes = await fetch('https://www.cloudflare.com/cdn-cgi/trace');
+      const traceText = await traceRes.text();
+      const coloMatch = traceText.match(/colo=([A-Z]+)/);
+      const colo = coloMatch ? coloMatch[1] : 'unknown';
+      console.log(`[cron] 运行边缘节点: ${colo}`);
+
       const selfUrl = 'https://binance-grid-worker.andox.workers.dev/api/trigger';
       const res = await fetch(selfUrl, { method: 'POST' });
       const result = await res.json();
-      await setCronStatus(env, { lastRun: startTime, status: 'success', triggerResult: result });
+      await setCronStatus(env, { lastRun: startTime, status: 'success', colo, triggerResult: result });
     } catch (e) {
       await setCronStatus(env, { lastRun: startTime, status: 'error', error: e.message });
     }

@@ -146,6 +146,26 @@ async function fetchMarkPrice(symbol, env) {
 }
 
 // ================== 路由分发 ==================
+const coloToCountry = {
+  // 美洲
+  "ORD": "🇺🇸", "EWR": "🇺🇸", "ATL": "🇺🇸", "DFW": "🇺🇸", "LAX": "🇺🇸", "SEA": "🇺🇸",
+  "YYZ": "🇨🇦", "YUL": "🇨🇦", "YVR": "🇨🇦",
+  "GRU": "🇧🇷", "EZE": "🇦🇷",
+  // 欧洲
+  "LHR": "🇬🇧", "MAN": "🇬🇧", "CDG": "🇫🇷", "FRA": "🇩🇪", "MUC": "🇩🇪", "AMS": "🇳🇱",
+  "MXP": "🇮🇹", "BCN": "🇪🇸", "MAD": "🇪🇸", "CPH": "🇩🇰", "ARN": "🇸🇪", "OSL": "🇳🇴",
+  "HEL": "🇫🇮", "WAW": "🇵🇱", "PRG": "🇨🇿", "BUD": "🇭🇺", "VIE": "🇦🇹", "ZRH": "🇨🇭",
+  "BRU": "🇧🇪", "DUB": "🇮🇪", "LIS": "🇵🇹", "OTP": "🇷🇴", "SOF": "🇧🇬", "ZAG": "🇭🇷",
+  // 亚洲/中东
+  "NRT": "🇯🇵", "HND": "🇯🇵", "KIX": "🇯🇵", "ICN": "🇰🇷", "PVG": "🇨🇳", "PEK": "🇨🇳",
+  "HKG": "🇭🇰", "TPE": "🇨🇳", "SIN": "🇸🇬", "KUL": "🇲🇾", "BKK": "🇹🇭", "HAN": "🇻🇳",
+  "SGN": "🇻🇳", "DEL": "🇮🇳", "BOM": "🇮🇳", "BLR": "🇮🇳", "DXB": "🇦🇪", "AUH": "🇦🇪",
+  "DOH": "🇶🇦", "RUH": "🇸🇦", "JED": "🇸🇦", "TLV": "🇮🇱", "IST": "🇹🇷", "AYT": "🇹🇷",
+  // 大洋洲
+  "SYD": "🇦🇺", "MEL": "🇦🇺", "BNE": "🇦🇺", "PER": "🇦🇺", "AKL": "🇳🇿",
+  // 非洲
+  "JNB": "🇿🇦", "CPT": "🇿🇦", "NBO": "🇰🇪", "CAI": "🇪🇬", "CAS": "🇲🇦"
+};
 
 export default {
   async fetch(request, env, ctx) {
@@ -177,20 +197,31 @@ export default {
   },
 
   async scheduled(event, env, ctx) {
-    const startTime = new Date(Date.now() + 8 * 3600000).toISOString().replace('Z', '+08:00');
+  // 1. 获取当前东八区时间，并按新格式生成 lastRun
+    const nowInBeijing = new Date();
+    const beijingTime = new Date(nowInBeijing.getTime() + 8 * 60 * 60 * 1000);
+    const formattedDate = beijingTime.toISOString().slice(0, 10).replace(/-/g, '-');
+    const hours = beijingTime.getUTCHours().toString().padStart(2, '0');
+    const minutes = beijingTime.getUTCMinutes().toString().padStart(2, '0');
+    const lastRun = `📅 ${formattedDate} ⏰ ${hours}:${minutes}`;
+
     try {
+    // 2. 获取 colo 并添加国旗（如果映射表中有）
       const traceRes = await fetch('https://www.cloudflare.com/cdn-cgi/trace');
       const traceText = await traceRes.text();
       const coloMatch = traceText.match(/colo=([A-Z]+)/);
-      const colo = coloMatch ? coloMatch[1] : 'unknown';
+      const coloRaw = coloMatch ? coloMatch[1] : 'unknown';
+      const flag = coloToCountry[coloRaw];
+      const colo = flag ? `${flag} ${coloRaw}` : `${coloRaw}（未知）`;
+
       console.log(`[cron] 运行边缘节点: ${colo}`);
 
       const details = await processAllUsers(env);
       console.log(`[cron] 处理结果:`, details);
 
-      await setCronStatus(env, { lastRun: startTime, status: 'success', colo, details });
+      await setCronStatus(env, { lastRun, status: 'success', colo, details });
     } catch (e) {
-      await setCronStatus(env, { lastRun: startTime, status: 'error', error: e.message });
+      await setCronStatus(env, { lastRun, status: 'error', error: e.message });
       console.error(`[cron] 执行失败:`, e.message);
     }
   },

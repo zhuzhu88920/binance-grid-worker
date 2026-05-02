@@ -19,6 +19,26 @@ binance-grid-worker/
 └── package.json
 ```
 
+## 架构说明
+
+### 451 错误解决方案
+
+Cloudflare Workers 的边缘节点可能分布在全球不同地区，当节点位于美国等地时，Binance 会返回 451 错误（`Service unavailable from a restricted location`）。
+
+本项目通过**反向代理**解决此问题：
+1. 在香港 VPS 上部署 Nginx Proxy Manager（或直接用 Nginx 配置反向代理）
+2. Worker 请求先打到香港代理，再由代理转发到 Binance
+3. 代理出口 IP 位于香港，Binance 允许访问
+
+### 请求头变量化
+
+为了提高安全性并避免被 Binance 封号，API 请求头（包括 User-Agent、Device-Info、Sec-CH-UA 等）不再硬编码，而是存储在环境变量中：
+- `USER1_USER_AGENT` - 用户代理字符串
+- `USER1_DEVICE_INFO` - 设备指纹（base64 编码）
+- `USER1_SEC_CH_UA` - 浏览器 UA 元数据
+
+每个用户账号的请求头独立配置，更加安全灵活。
+
 ## 快速开始
 
 ### 1. 前置条件
@@ -26,6 +46,7 @@ binance-grid-worker/
 - [Node.js](https://nodejs.org/) >= 18
 - Cloudflare 账号（免费版即可）
 - [Bark App](https://apps.apple.com/app/bark/id1400184399)（iOS 推送用，安卓用 [Bark-Android](https://github.com/Finb/Bark)）
+- **香港 VPS**（用于部署反向代理，可选，如遇到 451 错误则必须配置）
 
 ### 2. 克隆项目
 
@@ -55,7 +76,74 @@ npm install
 
 > **注意**：`auto_update.js` 不会提交到 git，仅在本地使用。
 
-### 4. 手动配置凭证（备选）
+### 4. 配置反向代理（如遇到 451 错误）
+
+如果 Cloudflare 边缘节点位于美国等地，Binance 会返回 451 错误。需要在香港 VPS 上配置反向代理：
+
+#### 方案一：Nginx Proxy Manager（推荐）
+
+1. 在香港 VPS 上安装 [Nginx Proxy Manager](https://nginxproxymanager.com/)
+2. 添加 Proxy Host：
+   - **Domain Names**: `binance.z8j.cc.cd`（换成你的域名）
+   - **Scheme**: `https`
+   - **Forward Hostname / IP**: `www.binance.com`
+   - **Forward Port**: `443`
+   - **Cache Assets**: OFF
+   - **Block Common Exploits**: ON
+   - **Websockets Support**: ON
+3. 在 "Custom Nginx Configuration" 中添加：
+   ```nginx
+   location / {
+       proxy_set_header Host www.binance.com;
+       proxy_set_header Origin https://www.binance.com;
+       proxy_set_header Referer https://www.binance.com/;
+       proxy_set_header Accept */*;
+       proxy_set_header Accept-Language zh-CN,zh;q=0.9,en;q=0.8;
+       proxy_set_header Accept-Encoding gzip,deflate,br;
+       proxy_set_header Content-Type application/json;
+       
+       proxy_ssl_server_name on;
+       proxy_ssl_protocols TLSv1.2 TLSv1.3;
+       
+       proxy_pass https://www.binance.com;
+   }
+   ```
+4. 同理配置 `fapi.z8j.cc.cd` → `fapi.binance.com`（行情 API）
+
+#### 方案二：直接用 Nginx
+
+```nginx
+server {
+    listen 80;
+    server_name binance.z8j.cc.cd;
+
+    location / {
+        proxy_set_header Host www.binance.com;
+        proxy_set_header Origin https://www.binance.com;
+        proxy_set_header Referer https://www.binance.com/;
+        proxy_set_header Accept */*;
+        proxy_set_header Accept-Language zh-CN,zh;q=0.9,en;q=0.8;
+        proxy_set_header Accept-Encoding gzip,deflate,br;
+        proxy_set_header Content-Type application/json;
+        
+        proxy_ssl_server_name on;
+        proxy_ssl_protocols TLSv1.2 TLSv1.3;
+        
+        proxy_pass https://www.binance.com;
+    }
+}
+```
+
+5. 配置完成后，将代理地址添加到 Cloudflare Secrets：
+   ```bash
+   wrangler secret put BAPI_BASE_URL
+   # 输入：http://binance.z8j.cc.cd
+   
+   wrangler secret put FAPI_BASE_URL
+   # 输入：http://fapi.z8j.cc.cd
+   ```
+
+### 5. 手动配置凭证（备选）
 
 如果不想用自动抓取，也可以手动创建 `.dev.vars`：
 
@@ -65,16 +153,28 @@ USER1_COOKIE=账号1的完整cookie
 USER1_CSRF_TOKEN=账号1的csrftoken
 USER1_BARK_KEY=账号1的Bark Key
 USER1_ID=zhuzhu
+USER1_USER_AGENT=账号1的User-Agent（从浏览器DevTools复制）
+USER1_DEVICE_INFO=账号1的device-info（base64编码的JSON）
+USER1_SEC_CH_UA=账号1的sec-ch-ua
 
 USER2_COOKIE=账号2的完整cookie
 USER2_CSRF_TOKEN=账号2的csrftoken
 USER2_BARK_KEY=账号2的Bark Key
 USER2_ID=queena
+USER2_USER_AGENT=账号2的User-Agent
+USER2_DEVICE_INFO=账号2的device-info
+USER2_SEC_CH_UA=账号2的sec-ch-ua
+
+# 反向代理地址（如已配置代理）
+BAPI_BASE_URL=http://binance.z8j.cc.cd
+FAPI_BASE_URL=http://fapi.z8j.cc.cd
 ```
+
+> **注意**：为提高安全性，每个用户的 `USER_AGENT`、`DEVICE_INFO`、`SEC_CH_UA` 应与该用户的浏览器环境保持一致。
 
 然后用 `auto_update.js` 选项 4 或手动 `wrangler secret put` 上传到 Cloudflare。
 
-### 5. 本地测试
+### 6. 本地测试
 
 ```bash
 npm run dev
@@ -84,7 +184,7 @@ curl http://localhost:8787/api/users
 curl -X POST http://localhost:8787/api/trigger
 ```
 
-### 6. 部署到 Cloudflare Workers
+### 7. 部署到 Cloudflare Workers
 
 ```bash
 # 先上传凭证到 CF Secrets（通过 auto_update.js 选项 4 或手动 wrangler secret put）
@@ -92,7 +192,7 @@ curl -X POST http://localhost:8787/api/trigger
 npm run deploy
 ```
 
-### 7. 验证部署
+### 8. 验证部署
 
 ```bash
 curl https://binance-grid-worker.andox.workers.dev/health
@@ -128,6 +228,11 @@ ETHUSDC  本金:1000  杠杆:20x  已配对:350  未配对:5
 - 首次运行或重置后会推送一次（基准值建立）
 
 ## 故障排查
+
+**遇到 451 错误？**
+- 错误信息：`Service unavailable from a restricted location`
+- 原因：Cloudflare 边缘节点位于美国等地，Binance 限制了该地区访问
+- 解决：参考本文档"配置反向代理"章节，添加 `BAPI_BASE_URL` 和 `FAPI_BASE_URL` 到 Cloudflare Secrets
 
 **推送后 `/api/users` 返回 0 个用户？**
 - 用 `auto_update.js` 选项 4 推送后，立即 `curl /api/users` 验证

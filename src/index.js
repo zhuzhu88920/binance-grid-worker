@@ -177,7 +177,7 @@ export default {
   },
 
   async scheduled(event, env, ctx) {
-    const startTime = new Date().toISOString();
+    const startTime = new Date(Date.now() + 8 * 3600000).toISOString().replace('Z', '+08:00');
     try {
       const traceRes = await fetch('https://www.cloudflare.com/cdn-cgi/trace');
       const traceText = await traceRes.text();

@@ -180,7 +180,7 @@ export default {
       return json(status);
     }
 
-    return json({ status: 'running', endpoints: ['/health', '/api/users', '/api/trigger', '/api/test', '/api/cron-status'] });
+    return json({ status: 'not found' }, 404);
   },
 
   // Cron 触发器：每 5 分钟

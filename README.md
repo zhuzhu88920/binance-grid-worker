@@ -84,7 +84,7 @@ npm install
 
 1. 在香港 VPS 上安装 [Nginx Proxy Manager](https://nginxproxymanager.com/)
 2. 添加 Proxy Host：
-   - **Domain Names**: `binance.z8j.cc.cd`（换成你的域名）
+   - **Domain Names**: `binance.***.cc.cd`（换成你的域名）
    - **Scheme**: `https`
    - **Forward Hostname / IP**: `www.binance.com`
    - **Forward Port**: `443`
@@ -108,14 +108,14 @@ npm install
        proxy_pass https://www.binance.com;
    }
    ```
-4. 同理配置 `fapi.z8j.cc.cd` → `fapi.binance.com`（行情 API）
+4. 同理配置 `fapi.***.cc.cd` → `fapi.binance.com`（行情 API）
 
 #### 方案二：直接用 Nginx
 
 ```nginx
 server {
     listen 80;
-    server_name binance.z8j.cc.cd;
+    server_name binance.***.cc.cd;
 
     location / {
         proxy_set_header Host www.binance.com;
@@ -137,10 +137,10 @@ server {
 5. 配置完成后，将代理地址添加到 Cloudflare Secrets：
    ```bash
    wrangler secret put BAPI_BASE_URL
-   # 输入：http://binance.z8j.cc.cd
+   # 输入：http://binance.***.cc.cd
    
    wrangler secret put FAPI_BASE_URL
-   # 输入：http://fapi.z8j.cc.cd
+   # 输入：http://fapi.***.cc.cd
    ```
 
 ### 5. 手动配置凭证（备选）
@@ -166,8 +166,8 @@ USER2_DEVICE_INFO=账号2的device-info
 USER2_SEC_CH_UA=账号2的sec-ch-ua
 
 # 反向代理地址（如已配置代理）
-BAPI_BASE_URL=http://binance.z8j.cc.cd
-FAPI_BASE_URL=http://fapi.z8j.cc.cd
+BAPI_BASE_URL=http://binance.***.cc.cd
+FAPI_BASE_URL=http://fapi.***.cc.cd
 ```
 
 > **注意**：为提高安全性，每个用户的 `USER_AGENT`、`DEVICE_INFO`、`SEC_CH_UA` 应与该用户的浏览器环境保持一致。
@@ -195,9 +195,9 @@ npm run deploy
 ### 8. 验证部署
 
 ```bash
-curl https://binance-grid-worker.andox.workers.dev/health
-curl https://binance-grid-worker.andox.workers.dev/api/users
-curl https://binance-grid-worker.andox.workers.dev/api/cron-status
+curl https://binance-grid-worker.*****.workers.dev/health
+curl https://binance-grid-worker.*****.workers.dev/api/users
+curl https://binance-grid-worker.*****.workers.dev/api/cron-status
 ```
 
 ## API 端点

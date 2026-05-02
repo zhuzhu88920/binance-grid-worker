@@ -30,3 +30,9 @@
 - queena 账号一直稳定
 - Cookie 更新依赖用户手动操作（浏览器 DevTools 复制请求头）
 - CF Durable Objects 可用于固定 Worker 出口 IP 到 HK（方案待实施）
+
+## 排查经验
+- **`auto_update.js` 推送 secret 为空的 bug 已修复**（stdio: 'ignore' → 'pipe'）
+- 推送后务必 `curl /api/users` 验证，count=0 说明 cookie/csrf 有空值
+- `execSync` 带 `input:` 时，`stdio` 必须 `'pipe'`，否则 stdin 关闭导致 wrangler 读到空值
+- 本地验证用 `wrangler dev --local` + `curl <http://localhost:8787/api/users>`

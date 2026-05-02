@@ -5,3 +5,5 @@ wrangler.log
 __pycache__/
 *.pyc
 .env
+auto_update.js
+test.js

@@ -54,13 +54,41 @@ function getUsersFromEnv(env) {
 // ================== Binance 请求头构建 ==================
 
 function makeHeaders(cookie, csrf, symbol = 'ETHUSDC') {
+  // 生成随机 trace-id（格式与浏览器一致：UUID v4）
+  const traceId = crypto.randomUUID();
+
+  // 从 cookie 中解析 bnc-uuid 和 BNC_FV_KEY
+  let bncUuid = '';
+  let fvideoId = '';
+  try {
+    const matchUuid = cookie.match(/bnc-uuid=([^;]+)/);
+    if (matchUuid) bncUuid = matchUuid[1];
+    const matchFv = cookie.match(/BNC_FV_KEY=([^;]+)/);
+    if (matchFv) fvideoId = matchFv[1];
+  } catch (e) {}
+
   return {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36 Edg/147.0.0.0',
+    'accept': '*/*',
+    'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
     'cookie': cookie,
     'csrftoken': csrf,
     'clienttype': 'web',
     'lang': 'zh-CN',
     'content-type': 'application/json',
+    'bnc-uuid': bncUuid,
+    'bnc-location': 'CN',
+    'device-info': 'eyJzY3JlZW5fcmVzb2x1dGlvbiI6IjE2ODAsMTA1MCIsImF2YWlsYWJsZV9zY3JlZW5fcmVzb2x1dGlvbiI6IjE2ODAsMTAwMiIsInN5c3RlbV92ZXJzaW9uIjoiV2luZG93cyAxMCIsImJyYW5kX21vZGVsIjoidW5rbm93biIsInN5c3RlbV9sYW5nIjoiemgtQ04iLCJ0aW1lem9uZSI6IkdNVCswODowMCIsInRpbWV6b25lT2Zmc2V0IjotNDgwLCJ1c2VyX2FnZW50IjoiTW96aWxsYS81LjAgKFdpbmRvd3MgTlQgMTAuMDsgV2luNjQ7IHg2NCkgQXBwbGVXZWJLaXQvNTM3LjM2IChLSFRNTCwgbGlrZSBHZWNrbykgQ2hyb21lLzE0Ny4wLjAuMCBTYWZhcmkvNTM3LjM2IEVkZy8xNDcuMC4wLjAiLCJsaXN0X3BsdWdpbiI6IlBERiBWaWV3ZXIsQ2hyb21lIFBERiBWaWV3ZXIsQ2hyb21pdW0gUERGIFZpZXdlcixNaWNyb3NvZnQgRWRnZSBQREYgVmlld2VyLFdlYktpdCBidWlsdC1pbiBQREYiLCJjYW52YXNfY29kZSI6IjMwNTVjYzEyIiwid2ViZ2xfdmVuZG9yIjoiR29vZ2xlIEluYy4gKE1pY3Jvc29mdCkiLCJ3ZWJnbF9yZW5kZXJlciI6IkFOR0xFIChNaWNyb3NvZnQsIE1pY3Jvc29mdCBCYXNpYyBSZW5kZXIgRHJpdmVyICgweDAwMDAwMDhDKSBEaXJlY3QzRDExIHZzXzVfMCBwc181XzAsIEQzRDExKSIsImF1ZGlvIjoiMTI0LjA0MzQ3NTI3NTE2MDc0IiwicGxhdGZvcm0iOiJXaW4zMiIsIndlYl90aW1lem9uZSI6IkFzaWEvU2hhbmdoYWkiLCJkZXZpY2VfbmFtZSI6IkNocm9tZSBWMTQ3LjAuMC4wIChXaW5kb3dzKSIsImZpbmdlcnByaW50IjoiZjcxNGMwMGNlY2YxZGM2MjJlODA4OTc5OTc3NTRhNTgiLCJkZXZpY2VfaWQiOiIiLCJyZWxhdGVkX2RldmljZV9pZHMiOiIifQ==',
+    'fvideo-id': fvideoId,
+    'x-trace-id': traceId,
+    'x-ui-request-trace': traceId,
+    'x-passthrough-token': '',
+    'sec-ch-ua': '"Microsoft Edge";v="147", "Not.A/Brand";v="8", "Chromium";v="147"',
+    'sec-ch-ua-mobile': '?0',
+    'sec-ch-ua-platform': '"Windows"',
+    'sec-fetch-dest': 'empty',
+    'sec-fetch-mode': 'cors',
+    'sec-fetch-site': 'same-origin',
     'referer': `https://www.binance.com/zh-CN/trading-bots/futures/grid/${symbol}`,
     'origin': 'https://www.binance.com',
   };
@@ -75,15 +103,16 @@ async function fetchOpenGrids(headers) {
     body: JSON.stringify({}),
   });
 
+  const responseText = await res.text().catch(() => '');
+
   if (res.status === 302 || res.status === 401 || res.status === 403) {
-    throw new Error('UNAUTHORIZED');
+    throw new Error(`UNAUTHORIZED (status=${res.status}, body=${responseText.substring(0, 500)})`);
   }
   if (res.status !== 200) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`HTTP ${res.status}: ${text.substring(0, 300)}`);
+    throw new Error(`HTTP ${res.status}: ${responseText.substring(0, 300)}`);
   }
 
-  const json = await res.json();
+  const json = JSON.parse(responseText);
   if (json.code !== '000000') {
     throw new Error(`Binance API 错误: code=${json.code}, message=${json.message || 'unknown'}`);
   }
@@ -145,16 +174,13 @@ export default {
     // 本地调试：从 .dev.vars 读凭证，抓取并推送
     if (pathname === '/api/test' && request.method === 'GET') return handleTest(env);
 
-    // 调试：查看 KV 状态、当前抓取结果、推送判断原因
-    if (pathname === '/api/debug' && request.method === 'GET') return handleDebug(env);
-
     // 查看 cron 最后一次执行状态
     if (pathname === '/api/cron-status' && request.method === 'GET') {
       const status = await getCronStatus(env);
       return json(status);
     }
 
-    return json({ status: 'running', endpoints: ['/health', '/api/users', '/api/trigger', '/api/test', '/api/debug', '/api/cron-status'] });
+    return json({ status: 'running', endpoints: ['/health', '/api/users', '/api/trigger', '/api/test', '/api/cron-status'] });
   },
 
   // Cron 触发器：每 5 分钟
@@ -168,12 +194,15 @@ export default {
       const colo = coloMatch ? coloMatch[1] : 'unknown';
       console.log(`[cron] 运行边缘节点: ${colo}`);
 
-      const selfUrl = 'https://binance-grid-worker.andox.workers.dev/api/trigger';
-      const res = await fetch(selfUrl, { method: 'POST' });
-      const result = await res.json();
-      await setCronStatus(env, { lastRun: startTime, status: 'success', colo, triggerResult: result });
+      // 直接调用处理逻辑，不 fetch 自己（避免 1042 错误）
+      const details = await processAllUsers(env);
+      console.log(`[cron] 处理结果:`, details);
+
+      await setCronStatus(env, { lastRun: startTime, status: 'success', colo, details });
+      console.log(`[cron] 状态已更新: ${colo}`);
     } catch (e) {
       await setCronStatus(env, { lastRun: startTime, status: 'error', error: e.message });
+      console.error(`[cron] 执行失败:`, e.message);
     }
   },
 };
@@ -336,50 +365,6 @@ async function handleTest(env) {
         ? await pushBark(user.id, 'manual', { strategies: metricsList, user_id: user.id }, user.barkKey)
         : false;
       results.push({ userId: user.id, gridCount: metricsList.length, pushed: ok });
-    }
-    return json({ success: true, results });
-  } catch (e) {
-    return json({ success: false, error: e.message });
-  }
-}
-
-// ================== 调试接口 ==================
-
-async function handleDebug(env) {
-  try {
-    const users = getUsersFromEnv(env);
-    if (users.length === 0) return json({ success: false, error: '未找到用户配置' });
-
-    const results = [];
-    for (const user of users) {
-      const headers = makeHeaders(user.cookie, user.csrfToken);
-      let grids = [];
-      try { grids = await fetchOpenGrids(headers); } catch (e) { grids = [{ error: e.message }]; }
-
-      const currentCounts = {};
-      for (const g of grids) {
-        if (g.error) continue;
-        currentCounts[g.strategyId] = g.matchedCount || 0;
-      }
-
-      const prevCounts = await getLastMatchedCounts(env, user.id);
-
-      let hasChange = false;
-      for (const sid of Object.keys(currentCounts)) {
-        if (String(currentCounts[sid]) !== String(prevCounts[sid] || '')) {
-          hasChange = true;
-          break;
-        }
-      }
-
-      results.push({
-        userId: user.id,
-        prevCounts,
-        currentCounts,
-        hasChange,
-        willPush: hasChange,
-        reason: hasChange ? 'matchedCount 有变化，会推送' : 'matchedCount 无变化，不推送',
-      });
     }
     return json({ success: true, results });
   } catch (e) {

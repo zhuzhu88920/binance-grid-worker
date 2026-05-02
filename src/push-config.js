@@ -4,8 +4,8 @@
  */
 
 export const PUSH_TEMPLATE = {
-  title: "🤖{username}  💰{mark_price_fmt} | 📈{total_pnl_fmt} | {time}",
-  strategy_line: "{indicator}{strategy_amount}U {leverage}x | 🔁{matched_count} ↪️{unmatched_count} | {total_pnl}({total_pnl_rate}%)|{matched_pnl}({matched_pnl_rate}%)|{unmatched_profit}({unmatched_profit_rate}%) | {days}day",
+  title: "🤖{username} 💰{mark_price_fmt} ⏰{time}",
+  strategy_line: "{indicator}{strategy_amount}U {leverage}x 🔁{matched_count} ↪️{unmatched_count} 📈{total_pnl}({total_pnl_rate}%)|{matched_pnl}({matched_pnl_rate}%)|{unmatched_profit}({unmatched_profit_rate}%) ☀{days}day",
   footer: "",
   empty_body: "⚠️ 未获取到任何策略数据",
   expired_title: "⚠️ Binance Cookie 已失效",

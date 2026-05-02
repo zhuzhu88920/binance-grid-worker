@@ -185,7 +185,7 @@ export default {
 
   // Cron 触发器：每 5 分钟
   async scheduled(event, env, ctx) {
-    const startTime = new Date().toISOString();
+    const startTime = new Date(Date.now() + 8 * 3600000).toISOString().replace('Z', '+08:00');
     try {
       // 诊断：记录 cron 运行在哪个边缘节点
       const traceRes = await fetch('https://www.cloudflare.com/cdn-cgi/trace');

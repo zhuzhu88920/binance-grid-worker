@@ -210,14 +210,16 @@ export default {
 
       console.log(`[cron] 运行边缘节点: ${colo}`);
 
-      const details = await processAllUsers(env);
+      const { details, currentCounts } = await processAllUsers(env);
       console.log(`[cron] 处理结果:`, details);
 
-      const allData = await getAllData(env);
-      await setAllData(env, {
-        last_matched_counts: allData.last_matched_counts || {},
-        cron_status: { lastRun, status: 'success', colo, details }
-      });
+      const hasChanges = details.some(d => d.changed);
+      if (hasChanges) {
+        await setAllData(env, {
+          last_matched_counts: currentCounts,
+          cron_status: { lastRun, status: 'success', colo, details }
+        });
+      }
     } catch (e) {
       const allData = await getAllData(env);
       await setAllData(env, {
@@ -236,7 +238,7 @@ async function processAllUsers(env) {
 
   if (users.length === 0) {
     console.log('未找到任何用户配置，请检查环境变量');
-    return [];
+    return { details: [], currentCounts: {} };
   }
 
   const allData = await getAllData(env);
@@ -256,15 +258,7 @@ async function processAllUsers(env) {
     }
   }
 
-  const hasChanges = details.some(d => d.changed);
-  if (hasChanges) {
-    await setAllData(env, {
-      last_matched_counts: currentCounts,
-      cron_status: allData.cron_status
-    });
-  }
-
-  return details;
+  return { details, currentCounts };
 }
 
 // ================== 网格数据处理 ==================

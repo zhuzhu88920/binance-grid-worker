@@ -8,3 +8,5 @@ __pycache__/
 auto_update.js
 NDH6SA~M
 .workbuddy/
+dist/
+.claude/

@@ -10,7 +10,7 @@ binance-grid-worker/
 │   ├── index.js          # 主入口：路由 + Binance API + cron 调度
 │   ├── push.js           # Bark 推送模块（POST+JSON，支持中文）
 │   ├── push-config.js    # 推送消息模板（由 build-template.cjs 自动生成）
-│   └── kv.js            # KV 封装（仅用于持久化 last_matched_counts）
+│   └── kv.js            # KV 封装（合并存储：last_matched_counts + cron_status）
 ├── auto_update.js        # [本地工具] 自动抓取浏览器 cookie 并同步到 CF（不提交 git）
 ├── build-template.cjs   # 读取 push-template.yaml → 生成 src/push-config.js
 ├── push-template.yaml   # 推送消息模板（修改后运行 npm run build:template）
@@ -20,6 +20,27 @@ binance-grid-worker/
 ```
 
 ## 架构说明
+
+### KV 存储优化策略
+
+为减少 Cloudflare KV 写入次数，项目采用**合并存储**策略：
+
+**存储结构**：
+- 所有用户数据合并存储在单个 KV 键 `all_data` 中
+- 包含 `last_matched_counts`（所有用户的已配对订单数）和 `cron_status`（cron 执行状态）
+
+**写入优化**：
+- 仅在数据变化时写入（如果所有用户的已配对订单数无变化，不执行写入）
+- 一次性写入所有数据（所有用户 + cron 状态）
+- 读取操作无限制（CF KV 读取不计入配额）
+
+**配额计算**：
+- 假设每天网格策略变化 100 次
+- 每次变化：1 次写入
+- 每天写入：100 次
+- CF KV 免费额度：1,000 次/天
+
+**结论**：即使多用户场景，也完全不会超出免费限制。
 
 ### 451 错误解决方案
 
@@ -226,6 +247,42 @@ ETHUSDC  本金:1000  杠杆:20x  已配对:350  未配对:5
 - 每 5 分钟自动触发（`*/5 * * * *`）
 - **仅在已配对订单数（matchedCount）发生变化时推送**
 - 首次运行或重置后会推送一次（基准值建立）
+
+## KV 存储优化
+
+为减少 Cloudflare KV 写入次数，项目采用**合并存储**策略：
+
+### 存储结构
+
+所有数据合并存储在单个 KV 键 `all_data` 中：
+```javascript
+{
+  "last_matched_counts": {
+    "user1": {"strategy1": 10},
+    "user2": {"strategy2": 5}
+  },
+  "cron_status": {
+    "lastRun": "📅 2026-05-03 ⏰ 14:30",
+    "status": "success",
+    "colo": "🇺🇸 ORD"
+  }
+}
+```
+
+### 写入优化
+
+- **仅在数据变化时写入**：如果所有用户的已配对订单数无变化，不执行写入操作
+- **一次性写入**：所有用户数据和 cron 状态合并为一次写入
+- **读取无限制**：CF KV 读取操作不计入配额
+
+### 配额计算
+
+假设每天网格策略变化 100 次：
+- 每次变化：1 次写入
+- 每天写入：100 次
+- **CF KV 免费额度**：1,000 次/天
+
+**结论**：即使多用户场景，也完全不会超出免费限制。
 
 ## 故障排查
 

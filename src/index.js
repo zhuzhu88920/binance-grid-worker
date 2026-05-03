@@ -6,7 +6,7 @@
  */
 
 import { pushBark } from './push.js';
-import { getLastMatchedCounts, setLastMatchedCounts, getCronStatus, setCronStatus } from './kv.js';
+import { getLastMatchedCounts, getAllData, setAllData, getCronStatus } from './kv.js';
 
 // ================== 从 env 读取用户列表 ==================
 
@@ -89,9 +89,7 @@ function makeHeaders(user, symbol = 'ETHUSDC') {
 // ================== Binance API (动态读取环境变量) ==================
 
 async function fetchOpenGrids(headers, env) {
-  // 修改点：从环境变量读取代理地址，如果没有配置，则默认使用币安官方地址
   const baseUrl = env.BAPI_BASE_URL || 'https://www.binance.com';
-  
   const res = await fetch(`${baseUrl}/bapi/futures/v2/private/future/grid/query-open-grids`, {
     method: 'POST',
     headers,
@@ -135,7 +133,6 @@ async function fetchUnmatchedCount(headers, strategyId, matchedCount, env) {
 
 async function fetchMarkPrice(symbol, env) {
   try {
-    // 合约行情读取专用代理变量
     const fapiUrl = env.FAPI_BASE_URL || 'https://fapi.binance.com';
     const res = await fetch(`${fapiUrl}/fapi/v1/premiumIndex?symbol=${symbol}`);
     const json = await res.json();
@@ -197,16 +194,13 @@ export default {
   },
 
   async scheduled(event, env, ctx) {
-  // 1. 获取当前东八区时间，并按新格式生成 lastRun
-    const nowInBeijing = new Date();
-    const beijingTime = new Date(nowInBeijing.getTime() + 8 * 60 * 60 * 1000);
-    const formattedDate = beijingTime.toISOString().slice(0, 10).replace(/-/g, '-');
-    const hours = beijingTime.getUTCHours().toString().padStart(2, '0');
-    const minutes = beijingTime.getUTCMinutes().toString().padStart(2, '0');
+    const nowInBeijing = new Date(Date.now() + 8 * 60 * 60 * 1000);
+    const formattedDate = nowInBeijing.toISOString().slice(0, 10);
+    const hours = nowInBeijing.getUTCHours().toString().padStart(2, '0');
+    const minutes = nowInBeijing.getUTCMinutes().toString().padStart(2, '0');
     const lastRun = `📅 ${formattedDate} ⏰ ${hours}:${minutes}`;
 
     try {
-    // 2. 获取 colo 并添加国旗（如果映射表中有）
       const traceRes = await fetch('https://www.cloudflare.com/cdn-cgi/trace');
       const traceText = await traceRes.text();
       const coloMatch = traceText.match(/colo=([A-Z]+)/);
@@ -219,9 +213,17 @@ export default {
       const details = await processAllUsers(env);
       console.log(`[cron] 处理结果:`, details);
 
-      await setCronStatus(env, { lastRun, status: 'success', colo, details });
+      const allData = await getAllData(env);
+      await setAllData(env, {
+        last_matched_counts: allData.last_matched_counts || {},
+        cron_status: { lastRun, status: 'success', colo, details }
+      });
     } catch (e) {
-      await setCronStatus(env, { lastRun, status: 'error', error: e.message });
+      const allData = await getAllData(env);
+      await setAllData(env, {
+        last_matched_counts: allData.last_matched_counts || {},
+        cron_status: { lastRun, status: 'error', error: e.message }
+      });
       console.error(`[cron] 执行失败:`, e.message);
     }
   },
@@ -237,16 +239,31 @@ async function processAllUsers(env) {
     return [];
   }
 
+  const allData = await getAllData(env);
+  const prevCounts = allData.last_matched_counts || {};
+
   const details = [];
+  const currentCounts = {};
+
   for (const user of users) {
     try {
-      const result = await processUser(user, env);
+      const result = await processUser(user, env, prevCounts[user.id] || {});
       details.push(result);
+      currentCounts[user.id] = result.current;
     } catch (e) {
       details.push({ userId: user.id, error: e.message });
       console.error(`处理用户 ${user.id} 失败:`, e.message);
     }
   }
+
+  const hasChanges = details.some(d => d.changed);
+  if (hasChanges) {
+    await setAllData(env, {
+      last_matched_counts: currentCounts,
+      cron_status: allData.cron_status
+    });
+  }
+
   return details;
 }
 
@@ -265,7 +282,6 @@ async function processGrid(headers, grid, env) {
   const gridEntryPrice = parseFloat(grid.gridEntryPrice || 0);
   const bookTime = parseInt(grid.bookTime || 0);
 
-  // 传入 env
   const markPrice = await fetchMarkPrice(symbol, env);
   const unmatchedCount = await fetchUnmatchedCount(headers, strategyId, matchedCount, env);
 
@@ -305,30 +321,27 @@ async function processGrid(headers, grid, env) {
 
 // ================== 用户处理主逻辑 ==================
 
-async function processUser(user, env) {
+async function processUser(user, env, prev) {
   const headers = makeHeaders(user);
-  const grids = await fetchOpenGrids(headers, env); // 传入 env
+  const grids = await fetchOpenGrids(headers, env);
 
   if (!grids || grids.length === 0) {
     console.log(`[${user.id}] 无运行中的策略`);
-    return { userId: user.id, pushed: false, reason: '无运行中的策略' };
+    return { userId: user.id, pushed: false, reason: '无运行中的策略', changed: false, current: {} };
   }
 
   const current = {};
   for (const g of grids) current[g.strategyId] = g.matchedCount || 0;
 
-  const prev = await getLastMatchedCounts(env, user.id);
   const changed = Object.keys(current).some(sid => current[sid] !== (prev[sid] || 0));
 
   console.log(`[${user.id}] 上次=${JSON.stringify(prev)} 当前=${JSON.stringify(current)} 有变化=${changed}`);
 
   if (changed) {
-    const metricsList = await Promise.all(grids.map(g => processGrid(headers, g, env))); // 传入 env
+    const metricsList = await Promise.all(grids.map(g => processGrid(headers, g, env)));
     await pushBark(user.id, 'normal', { strategies: metricsList, user_id: user.id }, user.barkKey);
     console.log(`[${user.id}] 已推送 ${grids.length} 个策略`);
   }
-
-  await setLastMatchedCounts(env, user.id, current);
 
   return { userId: user.id, prev, current, changed, pushed: changed };
 }
@@ -340,21 +353,31 @@ async function handleTriggerAll(env) {
     const users = getUsersFromEnv(env);
     if (users.length === 0) return json({ success: false, error: '未找到用户配置' });
 
+    const allData = await getAllData(env);
+    const currentCounts = {};
     const results = [];
+
     for (const user of users) {
       try {
         const headers = makeHeaders(user);
-        const grids = await fetchOpenGrids(headers, env); // 传入 env
-        const metricsList = await Promise.all(grids.map(g => processGrid(headers, g, env))); // 传入 env
-        const currentCounts = {};
-        for (const g of grids) currentCounts[g.strategyId] = g.matchedCount || 0;
+        const grids = await fetchOpenGrids(headers, env);
+        const metricsList = await Promise.all(grids.map(g => processGrid(headers, g, env)));
+        const userCounts = {};
+        for (const g of grids) userCounts[g.strategyId] = g.matchedCount || 0;
+        currentCounts[user.id] = userCounts;
         await pushBark(user.id, 'manual', { strategies: metricsList, user_id: user.id }, user.barkKey);
-        await setLastMatchedCounts(env, user.id, currentCounts);
         results.push({ userId: user.id, success: true, strategyCount: grids.length });
       } catch (e) {
         results.push({ userId: user.id, success: false, error: e.message });
       }
     }
+
+    const newData = {
+      last_matched_counts: currentCounts,
+      cron_status: allData.cron_status
+    };
+    await setAllData(env, newData);
+
     return json({ success: true, results });
   } catch (e) {
     return json({ success: false, error: e.message });
@@ -369,8 +392,8 @@ async function handleTest(env) {
     const results = [];
     for (const user of users) {
       const headers = makeHeaders(user);
-      const grids = await fetchOpenGrids(headers, env); // 传入 env
-      const metricsList = await Promise.all(grids.map(g => processGrid(headers, g, env))); // 传入 env
+      const grids = await fetchOpenGrids(headers, env);
+      const metricsList = await Promise.all(grids.map(g => processGrid(headers, g, env)));
       const ok = user.barkKey
         ? await pushBark(user.id, 'manual', { strategies: metricsList, user_id: user.id }, user.barkKey)
         : false;

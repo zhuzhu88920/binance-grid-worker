@@ -132,7 +132,7 @@ export async function pushBark(userId, type, data, barkKey) {
     var resp = await fetch(barkUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: title, body: body, group: 'binance' }),
+      body: JSON.stringify({ title: title, body: body, group: 'binance_' + userId }),
     });
 
     if (resp.ok) {

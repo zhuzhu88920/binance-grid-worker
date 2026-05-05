@@ -77,6 +77,7 @@ function formatMessage(data) {
     username: userId,
     mark_price_fmt: first.mark_price > 0 ? first.mark_price.toFixed(2) : '?.??',
     total_pnl_fmt: fmtNum(totalPnlAll),
+    total_assets: data.total_assets || 0,
   });
   var title = fillTemplate(PUSH_TEMPLATE.title, titleVars2);
 

@@ -24,6 +24,12 @@
 - `device-info` 是 base64 编码的 JSON 设备指纹
 - `fvideo-id` 应与 cookie 中的 `BNC_FV_KEY` 值相同
 - `csrftoken` 是自定义请求头（不是 cookie），由前端框架内存中生成
+- **获取账户总资产**用 wallet-group API：`/bapi/asset/v3/private/asset-service/wallet/wallet-group?quoteAsset=USDT&needAlphaAsset=true&needEuFuture=true`，GET 请求，返回 data[] 按 walletGroupType 分组（TradingBots/Futures/Spot/Funding），每组有 totalBalance 字段
+- **获取详细余额**用 balance API：`/bapi/asset/v2/private/asset-service/wallet/balance?quoteAsset=USDT&needBalanceDetail=true&needEuFuture=true`，返回各钱包的具体币种余额（含 assetBalances 数组，有 free/locked/freeze 等字段）
+- 网格策略的"总资产"= wallet-group 中 TradingBots.totalBalance + Futures.totalBalance
+- `strategyAmount`（query-open-grids 返回）≈ TradingBots.totalBalance，差额是实时浮动盈亏
+- Futures.totalBalance 是合约钱包可用余额（未投入网格的 USDC）
+- balance API 中 FUTURE 钱包的 assetBalances 里 USDC 的 free 字段就是可用余额
 
 ## 已知问题
 - zhuzhu 账号 cookie 频繁失效（401 code 100002001），可能因 aws-waf-token 绑定 IP

@@ -233,11 +233,16 @@ curl https://binance-grid-worker.*****.workers.dev/api/cron-status
 
 ## 推送消息格式
 
-标题：`zhuzhu | 2262.73 | +5.42% | 14:35`
+标题：`🤖zhuzhu 💰2375.88 ⏰23:00 🏦3790U`
+
+- 🤖 用户名
+- 💰 当前标记价格
+- ⏰ 北京时间
+- 🏦 总资产（USDT，整数，来自 wallet-group API）
 
 正文（每个策略一行）：
 ```
-ETHUSDC  本金:1000  杠杆:20x  已配对:350  未配对:5
+🟢500U 20x 🍻350 🍺5 🚀+5.42(+0.54%)|+3.20(+0.32%)|+2.22(+0.22%) ☀7.5day
 ```
 
 可通过修改 `push-template.yaml` 自定义格式，修改后运行 `npm run build:template` 生成新配置。

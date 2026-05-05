@@ -88,6 +88,28 @@ function makeHeaders(user, symbol = 'ETHUSDC') {
 
 // ================== Binance API (动态读取环境变量) ==================
 
+async function getTotalAssets(headers, env) {
+  const baseUrl = env.BAPI_BASE_URL || 'https://www.binance.com';
+  const url = `${baseUrl}/bapi/asset/v3/private/asset-service/wallet/wallet-group?quoteAsset=USDT&needAlphaAsset=true&needEuFuture=true`;
+  const res = await fetch(url, { headers });
+
+  if (res.status === 401 || res.status === 403) {
+    throw new Error(`UNAUTHORIZED (status=${res.status})`);
+  }
+  if (res.status !== 200) {
+    throw new Error(`HTTP ${res.status}`);
+  }
+  const json = await res.json();
+  if (json.code !== '000000') {
+    throw new Error(`API error: code=${json.code}`);
+  }
+  let total = 0;
+  for (const g of (json.data || [])) {
+    total += parseFloat(g.totalBalance || 0);
+  }
+  return Math.round(total); // 保留整数
+}
+
 async function fetchOpenGrids(headers, env) {
   const baseUrl = env.BAPI_BASE_URL || 'https://www.binance.com';
   const res = await fetch(`${baseUrl}/bapi/futures/v2/private/future/grid/query-open-grids`, {
@@ -332,9 +354,13 @@ async function processUser(user, env, prev) {
   console.log(`[${user.id}] 上次=${JSON.stringify(prev)} 当前=${JSON.stringify(current)} 有变化=${changed}`);
 
   if (changed) {
+    let totalAssets = 0;
+    try { totalAssets = await getTotalAssets(headers, env); } catch (e) {
+      console.error(`[${user.id}] 获取总资产失败:`, e.message);
+    }
     const metricsList = await Promise.all(grids.map(g => processGrid(headers, g, env)));
-    await pushBark(user.id, 'normal', { strategies: metricsList, user_id: user.id }, user.barkKey);
-    console.log(`[${user.id}] 已推送 ${grids.length} 个策略`);
+    await pushBark(user.id, 'normal', { strategies: metricsList, user_id: user.id, total_assets: totalAssets }, user.barkKey);
+    console.log(`[${user.id}] 已推送 ${grids.length} 个策略，总资产 ${totalAssets}U`);
   }
 
   return { userId: user.id, prev, current, changed, pushed: changed };
@@ -359,7 +385,9 @@ async function handleTriggerAll(env) {
         const userCounts = {};
         for (const g of grids) userCounts[g.strategyId] = g.matchedCount || 0;
         currentCounts[user.id] = userCounts;
-        await pushBark(user.id, 'manual', { strategies: metricsList, user_id: user.id }, user.barkKey);
+        let totalAssets = 0;
+        try { totalAssets = await getTotalAssets(headers, env); } catch (e) {}
+        await pushBark(user.id, 'manual', { strategies: metricsList, user_id: user.id, total_assets: totalAssets }, user.barkKey);
         results.push({ userId: user.id, success: true, strategyCount: grids.length });
       } catch (e) {
         results.push({ userId: user.id, success: false, error: e.message });
@@ -388,8 +416,10 @@ async function handleTest(env) {
       const headers = makeHeaders(user);
       const grids = await fetchOpenGrids(headers, env);
       const metricsList = await Promise.all(grids.map(g => processGrid(headers, g, env)));
+      let totalAssets = 0;
+      try { totalAssets = await getTotalAssets(headers, env); } catch (e) {}
       const ok = user.barkKey
-        ? await pushBark(user.id, 'manual', { strategies: metricsList, user_id: user.id }, user.barkKey)
+        ? await pushBark(user.id, 'manual', { strategies: metricsList, user_id: user.id, total_assets: totalAssets }, user.barkKey)
         : false;
       results.push({ userId: user.id, gridCount: metricsList.length, pushed: ok });
     }
